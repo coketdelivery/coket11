@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>코켓배송-폭탄피하기 게임</title>
+  <style>
+    :root { --gap: 8px; }
+    @media (min-width: 600px) { :root { --gap: 16px; } }
+    html, body { margin:0; padding:0; height:100%; }
+    body {
+      display:flex;
+      flex-direction:column;
+      height:100vh;
+      background: url('1.jpg') no-repeat center center fixed;
+      background-size:cover;
+      font-family:sans-serif;
+      color:#333;
+      position:relative;
+      overflow:hidden;
+    }
+    /* Status (Time & Score) */
+    #status {
+      position: absolute;
+      top: var(--gap);
+      left: var(--gap);
+      background: rgba(255,255,255,0.8);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 1rem;
+      /* 인트로에서는 숨기기 */
+      display: none;
+      /* 게임 화면에서 진한 빨간색 + 볼드 */
+      color: #8B0000;
+      font-weight: bold;
+      z-index: 5;
+    }
+    /* Intro Screen */
+    #intro {
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      padding:20px;
+      background: rgba(255,255,255,0.8);
+      z-index:1;
+    }
+    #intro h1 { font-size:2rem; margin-bottom:1rem; }
+    #intro p { font-size:1rem; margin:0.5rem 0; line-height:1.4; }
+    #intro a { color:#3498db; text-decoration:underline; }
+    #intro button {
+      margin-top:1.5rem;
+      background:#ff6b6b;
+      border:none;
+      padding:12px 24px;
+      border-radius:24px;
+      font-size:1rem;
+      color:#fff;
+      cursor:pointer;
+    }
+    /* Game Screen */
+    #game {
+      display:none;
+      flex:1;
+      flex-direction:column;
+      height:100%;
+      background: transparent;
+      z-index:2;
+    }
+    #round {
+      text-align:center;
+      font-size:1.8rem;
+      padding:var(--gap);
+      background:rgba(255,255,255,0.8);
+    }
+    .holes {
+      flex:1;
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      grid-template-rows:repeat(4,1fr);
+      gap:var(--gap);
+      padding:var(--gap);
+      min-height:0;
+    }
+    .hole {
+      position:relative;
+      background:#fff;
+      border-radius:50%;
+      box-shadow:0 1px 4px rgba(0,0,0,0.2);
+      cursor:pointer;
+      overflow:hidden;
+      background-size:cover;
+      background-position:center;
+      background-repeat:no-repeat;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      width:100%;
+    }
+    .hole.clicked { cursor:default; }
+    footer#footer {
+      text-align:center;
+      font-size:0.8rem;
+      padding:var(--gap);
+      background:rgba(255,255,255,0.8);
+    }
+    #message {
+      position:fixed;
+      top:0; left:0;
+      width:100%; height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      visibility:hidden;
+      background:rgba(0,0,0,0.6);
+      z-index:10;
+    }
+    #message.show { visibility:visible; }
+    #message .popup {
+      background:#fff;
+      color:#333;
+      padding:20px;
+      border-radius:8px;
+      width:90%; max-width:300px;
+      text-align:center;
+    }
+    #message .popup h1 { margin:0 0 10px; font-size:1.5rem; }
+    #message .popup p { margin:8px 0 16px; line-height:1.4; font-size:0.9rem; }
+    #message .popup a { color:#3498db; text-decoration:underline; }
+    #message .popup button {
+      background:#ff9acc;
+      border:none;
+      padding:8px 16px;
+      border-radius:16px;
+      font-size:0.9rem;
+      color:#fff;
+      cursor:pointer;
+    }
+  </style>
+</head>
+<body>
+  <!-- Status: Time & Score -->
+  <div id="status">Time: 90 | Score: 0</div>
+  <!-- Background Music -->
+  <audio id="bgAudio" src="back.mp3" loop playsinline></audio>
+
+  <!-- Intro -->
+  <div id="intro">
+    <h1>❤️ 코켓배송 폭탄피하기🚚</h1>
+    <p>코켓배송을 찾으면 게임종료가 됩니다,<br> 각라운드별 90초 제한입니다</p>
+	<p>❤️총 15라운드입니다❤️</p>
+    <p>유튜브 '걸코_Gulko' 저작권 콘텐츠입니다.<br>© 2025 코켓게임즈. All rights reserved.</p>
+    <p><a href="https://www.youtube.com/@Gulko" target="_blank">https://www.youtube.com/@Gulko</a></p>
+    <button id="startBtn">게임 시작</button>
+  </div>
+
+  <!-- Game -->
+  <div id="game">
+    <div id="round">Round: 1</div>
+    <div class="holes" id="holes"></div>
+    <footer id="footer">
+      유튜브 '걸코_Gulko' 저작권 콘텐츠입니다.&nbsp;
+      <a href="https://www.youtube.com/@Gulko" target="_blank">https://www.youtube.com/@Gulko</a><br>
+      © 2025 코켓게임즈. All rights reserved
+    </footer>
+  </div>
+
+  <div id="message"></div>
+  <script>
+    const TOTAL_HOLES = 16;
+    const MAX_ROUND = 15;
+    let round = 1;
+    let bombIndices;
+    let safeCount;
+    let clickedCount = 0;
+    let score = 0;
+    let timeLeft = 90;
+    let timerInterval;
+    let bgAudioPlayed = false;
+
+    const statusEl = document.getElementById('status');
+    const introEl = document.getElementById('intro');
+    const gameEl = document.getElementById('game');
+    const startBtn = document.getElementById('startBtn');
+    const holesEl = document.getElementById('holes');
+    const roundEl = document.getElementById('round');
+    const messageEl = document.getElementById('message');
+    const bgAudio = document.getElementById('bgAudio');
+
+    function updateStatus() {
+      statusEl.textContent = `Time: ${timeLeft} | Score: ${score}`;
+    }
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      timeLeft = 90;
+      updateStatus();
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        updateStatus();
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          endGame();
+        }
+      }, 1000);
+    }
+
+    startBtn.addEventListener('click', () => {
+      // 인트로에서는 숨겨뒀던 상태창을 게임 시작 시에만 보이도록
+      introEl.style.display = 'none';
+      statusEl.style.display = 'block';
+
+      gameEl.style.display = 'flex';
+      if (!bgAudioPlayed) {
+        bgAudio.currentTime = 0;
+        bgAudio.play().catch(() => {});
+        bgAudioPlayed = true;
+      }
+      score = 0;
+      round = 1;
+      updateStatus();
+      startTimer();
+      startRound();
+    });
+
+    function startRound() {
+      roundEl.textContent = `Round: ${round}`;
+      clickedCount = 0;
+      holesEl.innerHTML = '';
+      bombIndices = new Set();
+      while (bombIndices.size < round) bombIndices.add(Math.floor(Math.random() * TOTAL_HOLES));
+      safeCount = TOTAL_HOLES - bombIndices.size;
+      for (let i = 0; i < TOTAL_HOLES; i++) {
+        const hole = document.createElement('div');
+        hole.className = 'hole';
+        hole.dataset.idx = i;
+        hole.addEventListener('click', () => onHoleClick(hole));
+        holesEl.appendChild(hole);
+      }
+    }
+
+    function onHoleClick(hole) {
+      const idx = Number(hole.dataset.idx);
+      if (hole.classList.contains('clicked')) return;
+      if (bombIndices.has(idx)) {
+        hole.style.backgroundImage = "url('3.jpg')";
+        new Audio('3.mp3').play();
+        endGame();
+      } else {
+        hole.classList.add('clicked');
+        hole.style.backgroundImage = "url('2.jpg')";
+        new Audio('2.mp3').play();
+        clickedCount++;
+        score++;
+        updateStatus();
+        if (clickedCount === safeCount) nextRound();
+      }
+    }
+
+    function nextRound() {
+      if (round === MAX_ROUND) showPopup('You Win!', restartGame);
+      else showPopup('OK!', () => { round++; startRound(); });
+    }
+
+    function showPopup(text, callback) {
+      messageEl.innerHTML = `<div class="popup"><h1>${text}</h1></div>`;
+      messageEl.classList.add('show');
+      setTimeout(() => {
+        messageEl.classList.remove('show');
+        if (callback) callback();
+      }, 1000);
+    }
+
+    function endGame() {
+      clearInterval(timerInterval);
+      messageEl.innerHTML = `<div class="popup">` +
+        `<h1>게임 오버! 😢</h1>` +
+        `<p>코팡 구입은 걸코와 함께<br>` +
+        `<a href="https://www.youtube.com/@Gulko" target="_blank">https://www.youtube.com/@Gulko</a><br>` +
+        `사랑합니다. 고객님</p>` +
+        `<button id="restartBtn">다시 시작</button>` +
+      `</div>`;
+      messageEl.classList.add('show');
+      document.getElementById('restartBtn').addEventListener('click', () => {
+        messageEl.classList.remove('show');
+        restartGame();
+      });
+    }
+
+    function restartGame() {
+      score = 0;
+      updateStatus();
+      bgAudio.currentTime = 0;
+      bgAudio.play().catch(() => {});
+      startTimer();
+      round = 1;
+      startRound();
+    }
+  </script>
+</body>
+</html>
